@@ -55,6 +55,11 @@ find_package(catkin REQUIRED COMPONENTS
 ## Generate services in the 'srv' folder
  add_service_files(
    FILES
+   BeginTrial.srv
+   Connect.srv
+   Disconnect.srv
+   EndTrial.srv
+   GetInterfaces.srv
    FlashIrLed.srv
    ToggleIrLed.srv
  )
