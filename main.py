@@ -5,6 +5,7 @@ import logging
 import time
 import datetime
 import rospy
+import serial
 
 # import crazyflie-lib-python packages
 import cflib.crazyflie
@@ -32,8 +33,9 @@ class Node :
 
         self.output_files = {}
 
-
         self.crazyflie = cflib.crazyflie.Crazyflie()
+
+        self.serial_driver = serial.Serial()
 
         # Advertize services
 
@@ -49,8 +51,9 @@ class Node :
 
         self.ir_led_toggle_srv = rospy.Service ( 'toggle_ir_led', ToggleIrLed, self.toggle_ir_led )
 
-        self.flash_ir_led = rospy.Service ( 'flash_ir_led', FlashIrLed, self.flash_ir_led )
+        self.flash_ir_led_srv = rospy.Service ( 'flash_ir_led', FlashIrLed, self.flash_ir_led )
 
+        self.toggle_solenoid_srv = rospy.Service ( 'toggle_solenoid', ToggleSolenoid, self.toggle_solenoid )
         # Subscribe to topics
         self.marker_sub = rospy.Subscriber( 'vicon/marker', Marker, self.marker_callback )
 
@@ -115,6 +118,7 @@ class Node :
     def get_interfaces ( self, request ) :
         interfaces = cflib.crtp.scan_interfaces( None )
         return str(interfaces)
+
 
     """
     Opens an indexed link interface to a crazyflie
@@ -190,6 +194,39 @@ class Node :
             return "ok"
 
         else : return "not connected"
+
+
+    """
+    Sets the state of the arduino controlled mounted at request.device
+    to the state request.solenoid_state, where True activates the solenoid,
+    and False deactivates it.
+    """
+    def toggle_solenoid ( self, request ) :
+        self.serial_driver.port = request.port
+        self.serial_driver.open()
+
+        filename = "solenoid_state.csv"
+        line = ""
+
+        if request.solenoid_state is True :
+            cmd = "on\n"
+            self.serial_driver.send ( bytearray(cmd, 'ASCII') )
+            timestamp = rospy.get_time()
+            line = "on,{}.{}".format ( timestamp.secs, timestamp.nsecs * 1e6 )
+        else :
+            cmd = "of\n"
+            self.serial_driver.send ( bytearray(cmd, 'ASCII') )
+            timestamp = rospy.get_time()
+            line = "on,{}.{}".format ( timestamp.secs, timestamp.nsecs * 1e6
+
+        if self.output_directory is not None :
+            if filename not in self.output_files.keys() :
+                self.output_files[filename] = open( filename, 'w' )
+
+            self.output_files[filename].write ( line )
+            
+        return "ok"
+
 
 
 
