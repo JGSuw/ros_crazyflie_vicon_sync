@@ -6,6 +6,7 @@ import time
 import datetime
 import rospy
 import serial
+import re
 
 # import crazyflie-lib-python packages
 import cflib.crazyflie
@@ -14,8 +15,7 @@ from cflib.crtp import crtpstack
 from cflib.crazyflie.log import LogConfig
 
 from cf_vicon_sync.srv import *
-from vicon_bridge.msg import Marker
-
+from tf.msg import tfMessage
 logging.basicConfig()
 
 GCS_SYNC_PORT = 8
@@ -53,9 +53,9 @@ class Node :
 
         self.flash_ir_led_srv = rospy.Service ( 'flash_ir_led', FlashIrLed, self.flash_ir_led )
 
-        self.toggle_solenoid_srv = rospy.Service ( 'toggle_solenoid', ToggleSolenoid, self.toggle_solenoid )
+        # self.toggle_solenoid_srv = rospy.Service ( 'toggle_solenoid', ToggleSolenoid, self.toggle_solenoid )
         # Subscribe to topics
-        self.marker_sub = rospy.Subscriber( 'vicon/marker', Marker, self.marker_callback )
+        self.tf_sub = rospy.Subscriber( 'tf', tfMessage, self.transform_callback )
 
         self.crazyflie.add_port_callback ( GCS_SYNC_PORT, self.crtp_callback )
 
@@ -108,7 +108,7 @@ class Node :
             for filename in self.output_files.keys() :
                 self.output_files[filename].close()
                 self.output_files.pop(filename)
-            self.output_files = None
+            self.output_directory = None
             return "ok, trial finished"
 
 
@@ -217,38 +217,43 @@ class Node :
             cmd = "of\n"
             self.serial_driver.send ( bytearray(cmd, 'ASCII') )
             timestamp = rospy.get_time()
-            line = "on,{}.{}".format ( timestamp.secs, timestamp.nsecs * 1e6
+            line = "on,{}.{}".format ( timestamp.secs, timestamp.nsecs * 1e6 )
 
         if self.output_directory is not None :
             if filename not in self.output_files.keys() :
                 self.output_files[filename] = open( filename, 'w' )
 
             self.output_files[filename].write ( line )
-            
+
         return "ok"
 
 
 
 
     """
-    Handles marker messages, writing the data for each marker to its own file
+    Handles transform messages, writing the data for each marker to its own file
     """
-    def marker_callback ( self, data ) :
-        filename = "{}_{}.csv".format( data.subject_name, data.marker_name )
+    def transform_callback ( self, data ) :
+
+        for transform_stamped in data.transforms :
+
+            filename = "{}.csv".format( re.sub( '/', '_', transform_stamped.child_frame_id ) )
 
 
-        seconds = data.header.stamp.seconds + data.header.stamp.nanoseconds / 1e9
+            seconds = transform_stamped.header.stamp.secs + transform_stamped.header.stamp.nsecs / 1e9
 
-        line = "{},{},{},{}\n".format( data.x,
-                                     data.y,
-                                     data.z,
-                                     seconds )
+            translation = transform_stamped.transform.translation
 
-        if self.output_directory is not None :
-            if filename not in self.output_files.keys() :
-                self.output_files[filename] = open ( filename, 'w')
+            line = "{},{},{},{}\n".format( translation.x,
+                                         translation.y,
+                                         translation.z,
+                                         seconds )
 
-            self.output_files[filename].write( line )
+            if self.output_directory is not None :
+                if filename not in self.output_files.keys() :
+                    self.output_files[filename] = open ( filename, 'w')
+
+                self.output_files[filename].write( line )
 
 
 
